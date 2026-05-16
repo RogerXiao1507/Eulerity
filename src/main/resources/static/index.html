@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Task Manager</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f6f7f9;
+            color: #1f2933;
+        }
+
+        header {
+            background: #1f2933;
+            color: white;
+            padding: 20px 24px;
+        }
+
+        main {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        section {
+            background: white;
+            border: 1px solid #d9e2ec;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            padding: 18px;
+        }
+
+        h1, h2 {
+            margin-top: 0;
+        }
+
+        label {
+            display: block;
+            font-weight: 700;
+            margin-top: 12px;
+        }
+
+        input, textarea, select, button {
+            box-sizing: border-box;
+            font: inherit;
+            margin-top: 6px;
+            width: 100%;
+        }
+
+        input, textarea, select {
+            border: 1px solid #bcccdc;
+            border-radius: 4px;
+            padding: 8px;
+        }
+
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        button {
+            background: #2563eb;
+            border: 0;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-weight: 700;
+            padding: 10px 12px;
+        }
+
+        button.secondary {
+            background: #52606d;
+        }
+
+        button.danger {
+            background: #b42318;
+        }
+
+        button.hidden {
+            display: none;
+        }
+
+        .row {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .actions button {
+            margin-top: 0;
+            width: auto;
+        }
+
+        .task {
+            border-bottom: 1px solid #edf1f7;
+            padding: 12px 0;
+        }
+
+        .task:last-child {
+            border-bottom: 0;
+        }
+
+        .meta {
+            color: #52606d;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .message {
+            margin-top: 12px;
+            min-height: 20px;
+        }
+
+        .error {
+            color: #b42318;
+        }
+
+        .success {
+            color: #047857;
+        }
+
+        pre {
+            background: #f0f4f8;
+            border-radius: 4px;
+            overflow-x: auto;
+            padding: 12px;
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Task Manager</h1>
+</header>
+
+<main>
+    <section>
+        <h2>Tasks</h2>
+        <button class="secondary" type="button" id="refreshTasks">Refresh Tasks</button>
+        <div id="taskList" class="message">Loading tasks...</div>
+    </section>
+
+    <section>
+        <h2 id="taskFormHeading">Create Task</h2>
+        <form id="createTaskForm">
+            <label for="title">Title</label>
+            <input id="title" name="title" required>
+
+            <label for="description">Description</label>
+            <textarea id="description" name="description"></textarea>
+
+            <div class="row">
+                <div>
+                    <label for="dueDate">Due Date</label>
+                    <input id="dueDate" name="dueDate" type="date">
+                </div>
+                <div>
+                    <label for="priority">Priority</label>
+                    <select id="priority" name="priority" required>
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM" selected>MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="status">Status</label>
+                    <select id="status" name="status" required>
+                        <option value="TODO" selected>TODO</option>
+                        <option value="IN_PROGRESS">IN_PROGRESS</option>
+                        <option value="DONE">DONE</option>
+                    </select>
+                </div>
+            </div>
+
+            <p>
+                <button type="submit" id="saveTaskButton">Create Task</button>
+            </p>
+            <button class="secondary hidden" type="button" id="cancelEditButton">Cancel Edit</button>
+            <div id="createMessage" class="message"></div>
+        </form>
+    </section>
+
+    <section>
+        <h2>Suggest Task</h2>
+        <form id="suggestTaskForm">
+            <label for="suggestDescription">Plain Language Description</label>
+            <textarea id="suggestDescription" name="suggestDescription" required>remind me to submit the quarterly report before Friday</textarea>
+
+            <p>
+                <button type="submit">Suggest Task</button>
+            </p>
+            <div id="suggestMessage" class="message"></div>
+            <pre id="suggestResult">No suggestion yet.</pre>
+        </form>
+    </section>
+</main>
+
+<script>
+    const taskList = document.getElementById("taskList");
+    const createMessage = document.getElementById("createMessage");
+    const suggestMessage = document.getElementById("suggestMessage");
+    const suggestResult = document.getElementById("suggestResult");
+    const createTaskForm = document.getElementById("createTaskForm");
+    const taskFormHeading = document.getElementById("taskFormHeading");
+    const saveTaskButton = document.getElementById("saveTaskButton");
+    const cancelEditButton = document.getElementById("cancelEditButton");
+    let editingTaskId = null;
+
+    async function requestJson(url, options = {}) {
+        const response = await fetch(url, {
+            headers: {
+                "Content-Type": "application/json",
+                ...(options.headers || {})
+            },
+            ...options
+        });
+
+        const text = await response.text();
+        const data = text ? JSON.parse(text) : null;
+
+        if (!response.ok) {
+            throw new Error(data?.error || `Request failed with status ${response.status}`);
+        }
+
+        return data;
+    }
+
+    function formatTask(task) {
+        const dueDate = task.dueDate || "No due date";
+        return `
+            <div class="task">
+                <strong>${escapeHtml(task.title)}</strong>
+                <div>${escapeHtml(task.description || "")}</div>
+                <div class="meta">Due: ${escapeHtml(dueDate)} | Priority: ${task.priority} | Status: ${task.status}</div>
+                <div class="actions">
+                    <button type="button" data-action="edit" data-task-id="${task.id}">Edit</button>
+                    <button class="danger" type="button" data-action="delete" data-task-id="${task.id}">Delete</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+    async function loadTasks() {
+        taskList.textContent = "Loading tasks...";
+        try {
+            const tasks = await requestJson("/tasks");
+            taskList.innerHTML = tasks.length
+                ? tasks.map(formatTask).join("")
+                : "<p>No tasks yet.</p>";
+        } catch (error) {
+            taskList.innerHTML = `<p class="error">${escapeHtml(error.message)}</p>`;
+        }
+    }
+
+    async function deleteTask(id) {
+        if (!confirm("Delete this task?")) {
+            return;
+        }
+
+        createMessage.textContent = "";
+        createMessage.className = "message";
+
+        try {
+            await requestJson(`/tasks/${id}`, { method: "DELETE" });
+            createMessage.textContent = "Task deleted.";
+            createMessage.classList.add("success");
+            if (editingTaskId === id) {
+                resetTaskForm();
+            }
+            await loadTasks();
+        } catch (error) {
+            createMessage.textContent = error.message;
+            createMessage.classList.add("error");
+        }
+    }
+
+    async function editTask(id) {
+        createMessage.textContent = "";
+        createMessage.className = "message";
+
+        try {
+            const task = await requestJson(`/tasks/${id}`);
+            editingTaskId = task.id;
+            createTaskForm.title.value = task.title;
+            createTaskForm.description.value = task.description || "";
+            createTaskForm.dueDate.value = task.dueDate || "";
+            createTaskForm.priority.value = task.priority;
+            createTaskForm.status.value = task.status;
+            taskFormHeading.textContent = `Edit Task #${task.id}`;
+            saveTaskButton.textContent = "Update Task";
+            cancelEditButton.classList.remove("hidden");
+            createTaskForm.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (error) {
+            createMessage.textContent = error.message;
+            createMessage.classList.add("error");
+        }
+    }
+
+    function resetTaskForm() {
+        editingTaskId = null;
+        createTaskForm.reset();
+        createTaskForm.priority.value = "MEDIUM";
+        createTaskForm.status.value = "TODO";
+        taskFormHeading.textContent = "Create Task";
+        saveTaskButton.textContent = "Create Task";
+        cancelEditButton.classList.add("hidden");
+    }
+
+    document.getElementById("refreshTasks").addEventListener("click", loadTasks);
+
+    taskList.addEventListener("click", async (event) => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) {
+            return;
+        }
+
+        const id = Number(button.dataset.taskId);
+        if (button.dataset.action === "edit") {
+            await editTask(id);
+        }
+        if (button.dataset.action === "delete") {
+            await deleteTask(id);
+        }
+    });
+
+    cancelEditButton.addEventListener("click", () => {
+        createMessage.textContent = "";
+        createMessage.className = "message";
+        resetTaskForm();
+    });
+
+    createTaskForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        createMessage.textContent = "";
+        createMessage.className = "message";
+
+        const form = event.currentTarget;
+        const payload = {
+            title: form.title.value,
+            description: form.description.value || null,
+            dueDate: form.dueDate.value || null,
+            priority: form.priority.value,
+            status: form.status.value
+        };
+
+        try {
+            const isEditing = editingTaskId !== null;
+            await requestJson(isEditing ? `/tasks/${editingTaskId}` : "/tasks", {
+                method: isEditing ? "PUT" : "POST",
+                body: JSON.stringify(payload)
+            });
+            createMessage.textContent = isEditing ? "Task updated." : "Task created.";
+            createMessage.classList.add("success");
+            resetTaskForm();
+            await loadTasks();
+        } catch (error) {
+            createMessage.textContent = error.message;
+            createMessage.classList.add("error");
+        }
+    });
+
+    document.getElementById("suggestTaskForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        suggestMessage.textContent = "";
+        suggestMessage.className = "message";
+        suggestResult.textContent = "Loading suggestion...";
+
+        const description = event.currentTarget.suggestDescription.value;
+
+        try {
+            const suggestion = await requestJson("/tasks/suggest", {
+                method: "POST",
+                body: JSON.stringify({ description })
+            });
+            suggestMessage.textContent = "Suggestion returned.";
+            suggestMessage.classList.add("success");
+            suggestResult.textContent = JSON.stringify(suggestion, null, 2);
+        } catch (error) {
+            suggestMessage.textContent = error.message;
+            suggestMessage.classList.add("error");
+            suggestResult.textContent = "No suggestion available.";
+        }
+    });
+
+    loadTasks();
+</script>
+</body>
+</html>

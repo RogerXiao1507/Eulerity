@@ -1,0 +1,33 @@
+# Maven build output
+target/
+*.class
+
+# Logs
+*.log
+logs/
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+application-local.properties
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# env
+.env
