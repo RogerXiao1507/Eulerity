@@ -322,12 +322,3 @@ The OpenAI integration is behind the `TaskAiClient` interface so tests can mock 
 DTOs are used for request and response objects instead of exposing the JPA entity directly. This keeps the API contract separate from the database model and gives validation a clear place to live.
 
 The frontend is intentionally basic because the assignment focuses on backend behavior and AI assisted development workflow, not frontend styling.
-
-## Submission Notes
-
-Do not commit:
-
-API keys  
-`.env` files  
-Maven build output such as `target/`  
-IDE specific files
